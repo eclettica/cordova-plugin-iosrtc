@@ -188,10 +188,6 @@ var peerConnectionConfig = {
         }
     ]
 };
-
-// This plugin handle 'addstream' and 'track' event for MediaStream creation.
-var useTrackEvent = Object.getOwnPropertyDescriptors(RTCPeerConnection.prototype).ontrack;
-
 var pc1 = new RTCPeerConnection(peerConnectionConfig),
     pc2 = new RTCPeerConnection(peerConnectionConfig);
 
@@ -252,22 +248,18 @@ function TestRTCPeerConnection(localStream) {
     }
   }
 
-  if (useTrackEvent) {
-     
-    // Add local stream tracks to RTCPeerConnection
-    var localPeerStream = new MediaStream();
-    localStream.getTracks().forEach(function (track) {
-      console.log('pc1.addTrack', track, localPeerStream);
-      pc1.addTrack(track, localPeerStream);
-    });
-        
-  // Note: Deprecated but supported 
-  } else {
-     pc1.addStream(localStream);
+  // Note: Deprecated but supported
+  //pc1.addStream(localStream);
 
-     // Note: Deprecated Test removeStream
-     // pc1.removeStream(pc1.getLocalStreams()[0]);<
-  }
+  // Note: Deprecated Test removeStream
+  // pc1.removeStream(pc1.getLocalStreams()[0])
+
+  // Note: Chrome Version 77.0.3865.90 (Official Build) still
+  // require to use addStream without webrtc-adapter.
+  localStream.getTracks().forEach(function (track) {
+    console.log('addTrack', track);
+    pc1.addTrack(track);
+  });
 
   function onAddIceCandidate(pc, can) {
     console.log('addIceCandidate', pc, can);
@@ -317,19 +309,21 @@ function TestRTCPeerConnection(localStream) {
     peerVideoEl.srcObject = peerStream;
   }
 
+  // This plugin handle 'addstream' and 'track' event for MediaStream creation.
+  var useTrackEvent = Object.getOwnPropertyDescriptors(RTCPeerConnection.prototype).ontrack;
+
+  // Using 'track' event with existing MediaStream
   if (useTrackEvent) {
-    var newPeerStream;
-    pc2.addEventListener('track', function(e) {
+    setPeerVideoStream(new MediaStream());
+    pc2.addEventListener('track', function (e) {
       console.log('pc2.track', e);
-      newPeerStream = e.streams[0] || newPeerStream || new MediaStream();
-      setPeerVideoStream(newPeerStream);
-      newPeerStream.addTrack(e.track);   
+      peerStream.addTrack(e.track);
     });
 
-  // Note: Deprecated but supported
+  // Using addstream to get  MediaStream
   } else {
-    pc2.addEventListener('addstream', function(e) {
-	  console.log('pc2.addStream', e);
+    pc2.addEventListener('addstream', function (e) {
+      console.log('pc2.addStream', e);
       setPeerVideoStream(e.stream);
     });
   }

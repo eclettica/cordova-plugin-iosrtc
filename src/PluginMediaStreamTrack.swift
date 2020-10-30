@@ -10,26 +10,25 @@ class PluginMediaStreamTrack : NSObject {
 	var lostStates = Array<String>()
 	var renders: [String : PluginMediaStreamRenderer]
 
-	init(rtcMediaStreamTrack: RTCMediaStreamTrack, trackId: String? = nil) {
+	init(rtcMediaStreamTrack: RTCMediaStreamTrack) {
 		NSLog("PluginMediaStreamTrack#init()")
 
 		self.rtcMediaStreamTrack = rtcMediaStreamTrack
 
-		if (trackId == nil) {
-			// Handle possible duplicate remote trackId with  janus or short duplicate name
-			// See: https://github.com/cordova-rtc/cordova-plugin-iosrtc/issues/432
+		// Handle possible duplicate remote trackId with  janus or short duplicate name
+		// See: https://github.com/cordova-rtc/cordova-plugin-iosrtc/issues/432
+		if (rtcMediaStreamTrack.trackId.count < 36) {
 			self.id = rtcMediaStreamTrack.trackId + "_" + UUID().uuidString;
 		} else {
-			self.id = trackId!;
+			self.id = rtcMediaStreamTrack.trackId;
 		}
-		
+
 		self.kind = rtcMediaStreamTrack.kind
 		self.renders = [:]
 	}
 
 	deinit {
 		NSLog("PluginMediaStreamTrack#deinit()")
-		stop()
 	}
 
 	func run() {
@@ -119,12 +118,6 @@ class PluginMediaStreamTrack : NSObject {
 
 		// Let's try setEnabled(false), but it also fails.
 		self.rtcMediaStreamTrack.isEnabled = false
-		
-		self.eventListener!([
-			"type": "statechange",
-			"readyState": "ended",
-			"enabled": self.rtcMediaStreamTrack.isEnabled ? true : false
-		])
 
 		for (_, render) in self.renders {
 			render.stop()

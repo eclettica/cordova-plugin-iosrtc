@@ -48,7 +48,7 @@ gulp.task('browserify', function () {
 		.pipe(vinyl_buffer())
 		.pipe(header(banner, banner_options))
 		.pipe(derequire())
-		.pipe(gulp.dest('www/'));
+		.pipe(gulp.dest('dist/'));
 });
 
 

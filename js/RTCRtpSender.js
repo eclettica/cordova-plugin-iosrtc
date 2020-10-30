@@ -7,6 +7,7 @@ function RTCRtpSender(data) {
 	data = data || {};
 
 	this._pc = data.pc;
+	this._stream = data.stream;
 	this.track = data.track;
 	this.params = data.params || {};
 }
@@ -22,12 +23,17 @@ RTCRtpSender.prototype.setParameters = function (params) {
 
 RTCRtpSender.prototype.replaceTrack = function (withTrack) {
 	var self = this,
-		pc = self._pc;
+		pc = self._pc,
+		stream = self._stream,
+		track = self.track;
 
 	return new Promise(function (resolve, reject) {
-		pc.removeTrack(self);
-		pc.addTrack(withTrack);
+		stream.removeTrack(track);
+		stream.addTrack(withTrack);
 		self.track = withTrack;
+
+		pc.removeStream(stream);
+		pc.addStream(stream);
 
 		// https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/negotiationneeded_event
 		var event = new Event('negotiationneeded');

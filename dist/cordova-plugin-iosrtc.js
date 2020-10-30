@@ -1,5 +1,5 @@
 /*
- * cordova-plugin-iosrtc v6.0.14
+ * cordova-plugin-iosrtc v6.0.13
  * Cordova iOS plugin exposing the full WebRTC W3C JavaScript APIs
  * Copyright 2015-2017 eFace2Face, Inc. (https://eface2face.com)
  * Copyright 2015-2019 BasqueVoIPMafia (https://github.com/BasqueVoIPMafia)
@@ -78,6 +78,9 @@ EventTarget.prototype.constructor = EventTarget;
 Object.defineProperties(EventTarget.prototype, Object.getOwnPropertyDescriptors(YaetiEventTarget.prototype));
 
 EventTarget.prototype.dispatchEvent = function (event) {
+
+	if(typeof event == 'string')
+		event = new Event(event);
 
 	Object.defineProperty(event, 'target', {
 	  value: this,
@@ -525,13 +528,8 @@ MediaStream.prototype.removeTrack = function (track) {
 
 
 MediaStream.prototype.clone = function () {
-
-	var newStream = MediaStream();
-	this.getTracks().forEach(function (track) {
-		newStream.addTrack(track.clone());
-	});
-
-	return newStream;
+	debug('clone()');
+	return new MediaStream(this);
 };
 
 // Backwards compatible API.
@@ -1127,10 +1125,6 @@ var
 // Save original MediaStreamTrack
 var originalMediaStreamTrack = window.MediaStreamTrack || function dummyMediaStreamTrack() {};
 
-function newMediaStreamTrackId() {
-   return window.crypto.getRandomValues(new Uint32Array(4)).join('-');
-}
-
 function MediaStreamTrack(dataFromEvent) {
 	if (!dataFromEvent) {
 		throw new Error('Illegal constructor');
@@ -1189,18 +1183,9 @@ MediaStreamTrack.prototype.applyConstraints = function () {
 };
 
 MediaStreamTrack.prototype.clone = function () {
-
-	var newTrackId = newMediaStreamTrackId();
-
-	exec(null, null, 'iosrtcPlugin', 'MediaStreamTrack_clone', [this.id, newTrackId]);
-
-	return new MediaStreamTrack({
- 		id: newTrackId,
- 		kind: this.kind,
- 		label: this.label,
- 		readyState: this.readyState,
- 		enabled: this.enabled
- 	});
+	//throw new Error('Not implemented.');
+	// SHAM
+	return this;
 };
 
 MediaStreamTrack.prototype.getCapabilities = function () {
@@ -1920,8 +1905,6 @@ function RTCPeerConnection(pcConfig, pcConstraints) {
 	this.pcId = randomNumber();
 	this.localStreams = {};
 	this.remoteStreams = {};
-	this.localTracks = {};
-	this.remoteTracks = {};
 
 	function onResultOK(data) {
 		onEvent.call(self, data);
@@ -2254,19 +2237,17 @@ RTCPeerConnection.prototype.getRemoteStreams = function () {
 };
 
 RTCPeerConnection.prototype.getReceivers = function () {
-	var self = this,
-		tracks = [],
+	var tracks = [],
 		id;
 
-	for (id in this.remoteTracks) {
-		if (this.remoteTracks.hasOwnProperty(id)) {
-			tracks.push(this.remoteTracks[id]);
+	for (id in this.remoteStreams) {
+		if (this.remoteStreams.hasOwnProperty(id)) {
+			tracks = tracks.concat(this.remoteStreams[id].getTracks());
 		}
 	}
 
 	return tracks.map(function (track) {
 		return new RTCRtpReceiver({
-			pc: self,
 			track: track
 		});
 	});
@@ -2274,21 +2255,24 @@ RTCPeerConnection.prototype.getReceivers = function () {
 
 RTCPeerConnection.prototype.getSenders = function () {
 	var self = this,
-		tracks = [],
-		id;
+		senders = [],
+		localStreams = self.localStreams,
+		id, stream;
 
-	for (id in this.localTracks) {
-		if (this.localTracks.hasOwnProperty(id)) {
-			tracks.push(this.localTracks[id]);
+	for (id in localStreams) {
+		if (localStreams.hasOwnProperty(id)) {
+			stream = localStreams[id];
+			stream.getTracks().forEach(function (track) { // jshint ignore:line
+				senders.push(new RTCRtpSender({
+					pc: self,
+					stream: stream,
+					track: track
+				}));
+			});
 		}
 	}
 
-	return tracks.map(function (track) {
-		return new RTCRtpSender({
-			pc: self,
-			track: track
-		});
-	});
+	return senders;
 };
 
 RTCPeerConnection.prototype.getTransceivers = function () {
@@ -2350,8 +2334,6 @@ RTCPeerConnection.prototype.addTrack = function (track, stream) {
 	if (!stream) {
 		exec(null, null, 'iosrtcPlugin', 'RTCPeerConnection_addTrack', [this.pcId, track.id, null]);
 	}
-
-	this.localTracks[track.id] = track;
 	
 	return new RTCRtpSender({
 		track: track
@@ -2382,21 +2364,9 @@ RTCPeerConnection.prototype.removeTrack = function (sender) {
 			if (hasTrack) {
 				stream = this.localStreams[id];
 				stream.removeTrack(track);
-				exec(null, null, 'iosrtcPlugin', 'RTCPeerConnection_removeTrack', [this.pcId, track.id, stream.id]);
-				delete this.localTracks[track.id];
-				break;
-			}
-		}
-	}
 
-	// No Stream matched remove track without stream
-	if (!stream) {
-		for (id in this.localTracks) {
-			if (this.localTracks.hasOwnProperty(id)) {
-				if (track.id === id) {
-					exec(null, null, 'iosrtcPlugin', 'RTCPeerConnection_removeTrack', [this.pcId, track.id, null]);	
-					delete this.localTracks[track.id];
-				}
+				exec(null, null, 'iosrtcPlugin', 'RTCPeerConnection_removeTrack', [this.pcId, track.id, stream.id]);
+				break;
 			}
 		}
 	}
@@ -2410,8 +2380,6 @@ RTCPeerConnection.prototype.getStreamById = function (id) {
 
 
 RTCPeerConnection.prototype.addStream = function (stream) {
-	var self = this;
-
 	if (isClosed.call(this)) {
 		throw new Errors.InvalidStateError('peerconnection is closed');
 	}
@@ -2429,20 +2397,11 @@ RTCPeerConnection.prototype.addStream = function (stream) {
 
 	this.localStreams[stream.id] = stream;
 
-	stream.getTracks().forEach(function (track) {
-		self.localTracks[track.id] = track;
-		track.addEventListener('ended', function () {
-			delete self.localTracks[track.id];
-		});
-	});
-
 	exec(null, null, 'iosrtcPlugin', 'RTCPeerConnection_addStream', [this.pcId, stream.id]);
 };
 
 
 RTCPeerConnection.prototype.removeStream = function (stream) {
-	var self = this;
-
 	if (isClosed.call(this)) {
 		throw new Errors.InvalidStateError('peerconnection is closed');
 	}
@@ -2459,10 +2418,6 @@ RTCPeerConnection.prototype.removeStream = function (stream) {
 	}
 
 	delete this.localStreams[stream.id];
-
-	stream.getTracks().forEach(function (track) {
-		delete self.localTracks[track.id];
-	});
 
 	exec(null, null, 'iosrtcPlugin', 'RTCPeerConnection_removeStream', [this.pcId, stream.id]);
 };
@@ -2638,8 +2593,8 @@ function onEvent(data) {
 			break;
 
 		case 'track':
-			var track = event.track = new MediaStreamTrack(data.track);
-			event.receiver = new RTCRtpReceiver({ track: track });
+			event.track = new MediaStreamTrack(data.track);
+			event.receiver = new RTCRtpReceiver({ track: event.track });
 			event.transceiver = new RTCRtpTransceiver({ receiver: event.receiver });
 			event.streams = [];
 
@@ -2648,13 +2603,6 @@ function onEvent(data) {
 				var stream = this.remoteStreams[data.streamId] || MediaStream.create(data.stream);
 				event.streams.push(stream);
 			}
-
-			// Store remote track
-			this.remoteTracks[track.id] = track;
-			track.addEventListener('ended', function () {
-				delete self.remoteTracks[track.id];
-			});
-
 			break;
 
 		case 'addstream':
@@ -2697,7 +2645,6 @@ module.exports = RTCRtpReceiver;
 function RTCRtpReceiver(data) {
 	data = data || {};
 
-	this._pc = data.pc;
 	this.track = data.track;
 }
 
@@ -2711,6 +2658,7 @@ function RTCRtpSender(data) {
 	data = data || {};
 
 	this._pc = data.pc;
+	this._stream = data.stream;
 	this.track = data.track;
 	this.params = data.params || {};
 }
@@ -2726,12 +2674,18 @@ RTCRtpSender.prototype.setParameters = function (params) {
 
 RTCRtpSender.prototype.replaceTrack = function (withTrack) {
 	var self = this,
-		pc = self._pc;
+		pc = self._pc,
+		stream = self._stream,
+		track = self.track;
 
 	return new Promise(function (resolve, reject) {
-		pc.removeTrack(self);
-		pc.addTrack(withTrack);
+		stream.removeTrack(track);
+		stream.addTrack(withTrack);
 		self.track = withTrack;
+
+		pc.removeStream(stream);
+		//pc.addStream(stream);
+		pc.addTrack(withTrack, stream);
 
 		// https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection/negotiationneeded_event
 		var event = new Event('negotiationneeded');
@@ -3550,25 +3504,6 @@ function registerGlobals(doNotRestoreCallbacksSupport) {
 	window.MediaStream                      = MediaStream;
 	window.webkitMediaStream                = MediaStream;
 	window.MediaStreamTrack                 = MediaStreamTrack;
-
-	// Apply CanvasRenderingContext2D.drawImage monkey patch
-	var drawImage = CanvasRenderingContext2D.prototype.drawImage;
-	CanvasRenderingContext2D.prototype.drawImage = function (arg) {
-		var args = Array.prototype.slice.call(arguments);
-		var context = this;
-		if (arg instanceof HTMLVideoElement && arg.render) {
-			arg.render.save(function (data) {
-			    var img = new window.Image();
-			    img.addEventListener("load", function () {
-			    	args.splice(0, 1, img.src);
-			        drawImage.apply(context, args);
-			    });
-			    img.setAttribute("src", "data:image/jpg;base64," + data);
-		  	});
-		} else {
-			return drawImage.apply(context, args);
-		}
-	};
 }
 
 function dump() {
@@ -5029,8 +4964,10 @@ yaetiEventTarget.prototype.dispatchEvent = function(event)
 	var i;
 	var listener;
 
-	if (!event || typeof event.type !== 'string')
+	if (!event || typeof event.type !== 'string') {
+		console.log('yaetiEventTarget.prototype.dispatchEvent', event);
 		throw new Error('`event` must have a valid `type` property');
+	}
 
 	// Do some stuff to emulate DOM Event behavior (just if this is not a
 	// DOM Event object).

@@ -45,7 +45,6 @@ In order to make this Cordova plugin run into a iOS application some requirement
 * openvidu => 2.11.0
 * Ionic => v8 
 * Jitsi ~ 3229 
-* Apizee => 2.6.11
 
 ## Installation
 
@@ -150,14 +149,11 @@ var peerConnectionConfig = {
     bundlePolicy: 'max-compat',
     rtcpMuxPolicy: 'negotiate',
     iceServers: [
-      {
-         urls: ["stun:stun.stunprotocol.org"]
-      }
+        {
+            url: "stun:stun.stunprotocol.org"
+        }
     ]
 };
-
-// This plugin handle 'addstream' and 'track' event for MediaStream creation.
-var useTrackEvent = Object.getOwnPropertyDescriptors(RTCPeerConnection.prototype).ontrack;
 
 var peerVideoEl, peerStream;
 function TestRTCPeerConnection(localStream) {
@@ -165,22 +161,15 @@ function TestRTCPeerConnection(localStream) {
   pc1 = new RTCPeerConnection(peerConnectionConfig);
   pc2 = new RTCPeerConnection(peerConnectionConfig);
   
-  if (useTrackEvent) {
-     
-    // Add local stream tracks to RTCPeerConnection
-    var localPeerStream = new MediaStream();
-    localStream.getTracks().forEach(function (track) {
-      console.log('pc1.addTrack', track, localPeerStream);
-      pc1.addTrack(track, localPeerStream);
-    });
-        
-  // Note: Deprecated but supported    
-  } else {
-     pc1.addStream(localStream);
+  // Note: Deprecated but supported
+  //pc1.addStream(localStream);
 
-     // Note: Deprecated Test removeStream
-     // pc1.removeStream(pc1.getLocalStreams()[0]);<
-  }
+  // Add local stream tracks to RTCPeerConnection
+  var localPeerStream = new MediaStream();
+  localStream.getTracks().forEach(function (track) {
+    console.log('pc1.addTrack', track, localPeerStream);
+    pc1.addTrack(track, localPeerStream);
+  });
 
   // Basic RTCPeerConnection Local WebRTC Signaling follow.
   function onAddIceCandidate(pc, can) {
@@ -214,18 +203,20 @@ function TestRTCPeerConnection(localStream) {
     peerVideoEl.srcObject = peerStream;
   }
 
+  // This plugin handle 'addstream' and 'track' event for MediaStream creation.
+  var useTrackEvent = Object.getOwnPropertyDescriptors(RTCPeerConnection.prototype).ontrack;
+
+  // Using 'track' event with existing MediaStream
   if (useTrackEvent) {
-    var newPeerStream;
-    pc2.addEventListener('track', function(e) {
+    setPeerVideoStream(new MediaStream());
+    pc2.addEventListener('track', function (e) {
       console.log('pc2.track', e);
-      newPeerStream = e.streams[0] || newPeerStream || new MediaStream();
-      setPeerVideoStream(newPeerStream);
-      newPeerStream.addTrack(e.track);   
+      peerStream.addTrack(e.track);
     });
-	
-  // Note: Deprecated but supported    
+
+  // Using addstream to get  MediaStream
   } else {
-    pc2.addEventListener('addstream', function(e) {
+    pc2.addEventListener('addstream', function (e) {
       console.log('pc2.addStream', e);
       setPeerVideoStream(e.stream);
     });
@@ -382,19 +373,19 @@ To run on Devices with iOS >= 13.3.1, you need a valid Apple Developer account t
 See [CHANGELOG.md](./CHANGELOG.md).
 
 
-## Authors
+## Author
 
+[Iñaki Baz Castillo](https://inakibaz.me)
+
+
+### Maintainers
+
+* [Harold Thetiot](https://sylaps.com)
 * [Iñaki Baz Castillo](https://inakibaz.me) (no longer active maintainer)
 * [Saúl Ibarra Corretgé](http://bettercallsaghul.com) (no longer active maintainer)
-* [Harold Thetiot](https://sylaps.com)
 
+Looking for new maintainers. Interested? Comment [here](https://github.com/cordova-rtc/cordova-plugin-iosrtc/issues/353).
 
-### Maintainer
-
-* [Harold Thetiot](https://sylaps.com)
-
-**If you like this project you can support me.**  
-<a href="https://www.buymeacoffee.com/hthetiot" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-white.png" alt="Buy Me A Coffee" style="height: 51px !important;width: 217px !important;" ></a>
 
 ## License
 

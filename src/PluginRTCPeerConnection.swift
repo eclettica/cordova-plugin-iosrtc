@@ -9,30 +9,21 @@ class PluginRTCPeerConnection : NSObject, RTCPeerConnectionDelegate {
 	// PluginRTCDataChannel dictionary.
 	var pluginRTCDataChannels: [Int : PluginRTCDataChannel] = [:]
 	// PluginRTCDTMFSender dictionary.
-	
 	var pluginRTCDTMFSenders: [Int : PluginRTCDTMFSender] = [:]
-	
 	var eventListener: (_ data: NSDictionary) -> Void
 	var eventListenerForAddStream: (_ pluginMediaStream: PluginMediaStream) -> Void
-	var eventListenerForRemoveStream: (_ pluginMediaStream: PluginMediaStream) -> Void
-	var eventListenerForAddTrack: (_ pluginMediaStreamTrack: PluginMediaStreamTrack) -> Void
-	var eventListenerForRemoveTrack: (_ pluginMediaStreamTrack: PluginMediaStreamTrack) -> Void
+	var eventListenerForRemoveStream: (_ id: String) -> Void
 
 	var onCreateLocalDescriptionSuccessCallback: ((_ rtcSessionDescription: RTCSessionDescription) -> Void)!
 	var onCreateLocalDescriptionFailureCallback: ((_ error: Error) -> Void)!
 	var onCreateRemoteDescriptionSuccessCallback: ((_ rtcSessionDescription: RTCSessionDescription) -> Void)!
 	var onCreateRemoteDescriptionFailureCallback: ((_ error: Error) -> Void)!
-	
 	var onSetDescriptionSuccessCallback: (() -> Void)!
 	var onSetDescriptionFailureCallback: ((_ error: Error) -> Void)!
-	
 	var onGetStatsCallback: ((_ array: NSArray) -> Void)!
 
 	var pluginMediaStreams: [String : PluginMediaStream]! = [:]
-	var pluginMediaTracks: [String : PluginMediaStreamTrack]! = [:]
-	
 	var trackIdsToSenders: [String : RTCRtpSender] = [:]
-	var trackIdsToReceivers: [String : RTCRtpReceiver] = [:]
 
 	var isAudioInputSelected: Bool = false
 
@@ -42,9 +33,7 @@ class PluginRTCPeerConnection : NSObject, RTCPeerConnectionDelegate {
 		pcConstraints: NSDictionary?,
 		eventListener: @escaping (_ data: NSDictionary) -> Void,
 		eventListenerForAddStream: @escaping (_ pluginMediaStream: PluginMediaStream) -> Void,
-		eventListenerForRemoveStream: @escaping (_ pluginMediaStream: PluginMediaStream) -> Void,
-		eventListenerForAddTrack: @escaping (_ pluginMediaStreamTrack: PluginMediaStreamTrack) -> Void,
-		eventListenerForRemoveTrack: @escaping (_ pluginMediaStreamTrack: PluginMediaStreamTrack) -> Void
+		eventListenerForRemoveStream: @escaping (_ id: String) -> Void
 	) {
 		NSLog("PluginRTCPeerConnection#init()")
 
@@ -54,8 +43,6 @@ class PluginRTCPeerConnection : NSObject, RTCPeerConnectionDelegate {
 		self.eventListener = eventListener
 		self.eventListenerForAddStream = eventListenerForAddStream
 		self.eventListenerForRemoveStream = eventListenerForRemoveStream
-		self.eventListenerForAddTrack = eventListenerForAddTrack
-		self.eventListenerForRemoveTrack = eventListenerForRemoveTrack
 	}
 
 	deinit {
@@ -486,17 +473,12 @@ class PluginRTCPeerConnection : NSObject, RTCPeerConnectionDelegate {
 		if self.rtcPeerConnection.signalingState == RTCSignalingState.closed {
 			return
 		}
-		
-		for (_, pluginMediaStream) in self.pluginMediaStreams {
-			self.eventListenerForRemoveStream(pluginMediaStream)
-		}
-		
-		for (_, pluginMediaTrack) in self.pluginMediaTracks {
-			self.eventListenerForRemoveTrack(pluginMediaTrack)
+
+		for (_, pluginMediaStream) in pluginMediaStreams {
+			self.eventListenerForRemoveStream(pluginMediaStream.id)
 		}
 
-		self.pluginMediaTracks = [:];
-		self.pluginMediaStreams = [:];
+		pluginMediaStreams = [:];
 
 		self.rtcPeerConnection.close()
 	}
@@ -587,75 +569,41 @@ class PluginRTCPeerConnection : NSObject, RTCPeerConnectionDelegate {
 	 * Methods inherited from RTCPeerConnectionDelegate.
 	 */
 
-	private func getPluginMediaStream(_ stream: RTCMediaStream?) -> PluginMediaStream? {
+	private func getPluginMediaStream(stream: RTCMediaStream?) -> PluginMediaStream? {
 
 		if (stream == nil) {
 			return nil;
 		}
 
-		var currentMediaStream : PluginMediaStream? = nil;
+		var currentPluginMediaStream : PluginMediaStream? = nil;
 
-		for (_, pluginMediaStream) in self.pluginMediaStreams {
+		for (_, pluginMediaStream) in pluginMediaStreams {
 			if (pluginMediaStream.rtcMediaStream == stream) {
-				currentMediaStream = pluginMediaStream;
+				currentPluginMediaStream = pluginMediaStream;
 				break;
 			}
 		}
 
-		if (currentMediaStream == nil) {
+		if (currentPluginMediaStream == nil) {
 
-			currentMediaStream = PluginMediaStream(rtcMediaStream: stream!)
+			currentPluginMediaStream = PluginMediaStream(rtcMediaStream: stream!)
 
-			currentMediaStream!.run()
-
-			// Let the plugin store it in its dictionary.
-			self.pluginMediaStreams[currentMediaStream!.id] = currentMediaStream;
-			
-			// Fixes issue #576
-			self.eventListenerForAddStream(currentMediaStream!)
-		}
-
-		return currentMediaStream;
-	}
-
-	
-	private func getPluginMediaStreamTrack(_ rtpReceiver: RTCRtpReceiver) -> PluginMediaStreamTrack? {
-		
-		if (rtpReceiver.track == nil) {
-			return nil;
-		}
-
-		var currentMediaStreamTrack : PluginMediaStreamTrack? = nil;
-
-		for (_, pluginMediaTrack) in self.pluginMediaTracks {
-			if (pluginMediaTrack.rtcMediaStreamTrack == rtpReceiver.track) {
-				currentMediaStreamTrack = pluginMediaTrack;
-				break;
-			}
-		}
-
-		if (currentMediaStreamTrack == nil) {
-
-			currentMediaStreamTrack = PluginMediaStreamTrack(rtcMediaStreamTrack: rtpReceiver.track!)
-
-			currentMediaStreamTrack!.run()
+			currentPluginMediaStream!.run()
 
 			// Let the plugin store it in its dictionary.
-			self.pluginMediaTracks[currentMediaStreamTrack!.id] = currentMediaStreamTrack;
-			self.trackIdsToReceivers[currentMediaStreamTrack!.id] = rtpReceiver;
-			
-			// Fixes issue #576
-			self.eventListenerForAddTrack(currentMediaStreamTrack!)
+			pluginMediaStreams[currentPluginMediaStream!.id] = currentPluginMediaStream;
 		}
 
-		return currentMediaStreamTrack;
+		return currentPluginMediaStream;
 	}
-	
+
 	/** Called when media is received on a new stream from remote peer. */
 	func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {
 		NSLog("PluginRTCPeerConnection | onaddstream")
 
-		let pluginMediaStream = getPluginMediaStream(stream);
+		let pluginMediaStream = getPluginMediaStream(stream: stream);
+
+		self.eventListenerForAddStream(pluginMediaStream!)
 
 		// Fire the 'addstream' event so the JS will create a new MediaStream.
 		self.eventListener([
@@ -669,9 +617,9 @@ class PluginRTCPeerConnection : NSObject, RTCPeerConnectionDelegate {
 	func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {
 		NSLog("PluginRTCPeerConnection | onremovestream")
 
-		let pluginMediaStream = getPluginMediaStream(stream);
+		let pluginMediaStream = getPluginMediaStream(stream: stream);
 
-		self.eventListenerForRemoveStream(pluginMediaStream!)
+		self.eventListenerForRemoveStream(pluginMediaStream!.id)
 
 		// Let the plugin remove it from its dictionary.
 		pluginMediaStreams[pluginMediaStream!.id] = nil;
@@ -687,7 +635,7 @@ class PluginRTCPeerConnection : NSObject, RTCPeerConnectionDelegate {
 
 		NSLog("PluginRTCPeerConnection | onaddtrack")
 
-		let pluginMediaTrack = getPluginMediaStreamTrack(rtpReceiver);
+		let pluginMediaTrack = PluginMediaStreamTrack(rtcMediaStreamTrack: rtpReceiver.track!)
 
 		// Add stream only if available in case of Unified-Plan of track event without stream
 		// TODO investigate why no stream sometimes with Unified-Plan and confirm that expexted behavior.
@@ -695,14 +643,14 @@ class PluginRTCPeerConnection : NSObject, RTCPeerConnectionDelegate {
 		if (streams.isEmpty) {
 			self.eventListener([
 				"type": "track",
-				"track": pluginMediaTrack!.getJSON(),
+				"track": pluginMediaTrack.getJSON(),
 			])
 		} else {
-			let pluginMediaStream = getPluginMediaStream(streams[0]);
+			let pluginMediaStream = getPluginMediaStream(stream: streams[0]);
 
 			self.eventListener([
 				"type": "track",
-				"track": pluginMediaTrack!.getJSON(),
+				"track": pluginMediaTrack.getJSON(),
 				"streamId": pluginMediaStream!.id,
 				"stream": pluginMediaStream!.getJSON()
 			])
